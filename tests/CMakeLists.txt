@@ -11,7 +11,9 @@ add_executable(resource_tests
         tests.cpp
 )
 
-target_link_libraries(resource_tests PRIVATE resource_core project_warnings Catch2::Catch2WithMain)
+target_include_directories(resource_tests PRIVATE ${CMAKE_SOURCE_DIR}/src/In_memory_index_core/include)
+
+target_link_libraries(resource_tests PRIVATE in_memory_index_core project_warnings Catch2::Catch2WithMain)
 if (TARGET project_sanitizers)
         target_link_libraries(resource_tests PRIVATE project_sanitizers)
 endif ()

@@ -39,5 +39,5 @@ if (ENABLE_SANITIZERS AND NOT WIN32)
     target_link_options(project_sanitizers INTERFACE    $<$<CONFIG:Debug>:-fsanitize=address>)
 endif ()
 
-add_subdirectory(src)
+add_subdirectory(src/In_memory_index_core)
 add_subdirectory(tests)
