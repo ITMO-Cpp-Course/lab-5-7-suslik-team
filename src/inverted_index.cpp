@@ -1,0 +1,72 @@
+#include "inverted_index.hpp"
+
+namespace search
+{
+void InvertedIndex::addDocument(DocId id, const std::vector<std::string>& words)
+{
+    if (docWords_.find(id) != docWords_.end())
+    {
+        removeDocument(id);
+    }
+    docWords_[id] = words;
+    for (const auto& word : words)
+    {
+        index_[word][id]++;
+    }
+}
+void InvertedIndex::removeDocument(DocId id)
+{
+    if (docWords_.find(id) != docWords_.end())
+    {
+        auto it = docWords_.find(id);
+        const auto& words = it->second;
+        for (const auto& word : words)
+        {
+            auto wordIt = index_.find(word);
+            if (wordIt != index_.end())
+            {
+                wordIt->second.erase(id);
+                if (wordIt->second.empty())
+                {
+                    index_.erase(wordIt);
+                }
+            }
+        }
+        docWords_.erase(it);
+    }
+}
+std::vector<DocId> InvertedIndex::search(const std::string& word) const
+{
+    auto it = index_.find(word);
+    if (it == index_.end())
+    {
+        return std::vector<DocId>();
+    }
+    std::vector<DocId> result;
+    for (const auto& pair : it->second)
+    {
+        result.push_back(pair.first);
+    }
+    return result;
+}
+std::unordered_map<DocId, int> InvertedIndex::getWordOccurrences(const std::string& word) const
+{
+    auto it = index_.find(word);
+    if (it == index_.end())
+    {
+        return std::unordered_map<DocId, int>();
+    }
+    const std::unordered_map<DocId, int> result = it->second;
+    return result;
+}
+size_t InvertedIndex::documentCount() const
+{
+    return docWords_.size();
+}
+
+void InvertedIndex::clear()
+{
+    index_.clear();
+    docWords_.clear();
+}
+} // namespace search
