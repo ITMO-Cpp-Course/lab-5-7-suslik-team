@@ -37,7 +37,7 @@ std::vector<std::string> DocumentBuilder::splitWords(const std::string& text)
     }
     return words;
 }
-static std::string normalizeWord(const std::string& word)
+std::string DocumentBuilder::normalizeWord(const std::string& word)
 {
     std::string result;
     for (char ch : word)
