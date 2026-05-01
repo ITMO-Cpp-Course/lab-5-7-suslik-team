@@ -3,7 +3,7 @@
 namespace in_memory_index
 {
 
-Document::Document(std::uint64_t doc_id, std::string doc_name, std::string doc_content)
+Document::Document(std::uint64_t doc_id, std::string doc_name, std::vector<std::string> doc_content)
     : id(doc_id), name(std::move(doc_name)), content(std::move(doc_content))
 {
 }
@@ -24,9 +24,9 @@ Document& Document::operator=(Document&& other) noexcept
     return *this;
 }
 
-std::string_view Document::text() const noexcept
+std::vector<std::string> Document::text() const noexcept
 {
     return content;
 }
 
-}
+} // namespace in_memory_index
