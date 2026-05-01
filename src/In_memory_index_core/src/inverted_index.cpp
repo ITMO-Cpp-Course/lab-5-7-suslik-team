@@ -1,6 +1,6 @@
-#include "inverted_index.hpp"
+#include "in_memory_index/inverted_index.hpp"
 
-namespace search
+namespace in_memory_index
 {
 void InvertedIndex::addDocument(DocId id, const std::vector<std::string>& words)
 {
@@ -69,4 +69,4 @@ void InvertedIndex::clear()
     index_.clear();
     docWords_.clear();
 }
-} // namespace search
+} // namespace in_memory_index

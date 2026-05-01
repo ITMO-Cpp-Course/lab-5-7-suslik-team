@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace search
+namespace in_memory_index
 {
 using DocId = int;
 class InvertedIndex
@@ -20,4 +20,4 @@ class InvertedIndex
     std::unordered_map<std::string, std::unordered_map<DocId, int>> index_;
     std::unordered_map<DocId, std::vector<std::string>> docWords_;
 };
-} // namespace search
+} // namespace in_memory_index
