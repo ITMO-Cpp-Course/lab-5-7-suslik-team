@@ -1,7 +1,6 @@
 #include <catch2/catch_all.hpp>
 
-// TODO: Your code
-TEST_CASE("Test case name", "[some_tag]")
-{
-    REQUIRE(false);
-}
+#include <in_memory_index/document.hpp>
+#include <in_memory_index/inverted_index.hpp>
+#include <in_memory_index/document_builder.hpp>
+
