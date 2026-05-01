@@ -1,6 +1,6 @@
 #pragma once
-#include "in_memory_index\document_builder.hpp"
-#include "in_memory_index\document.hpp"
+#include "in_memory_index/document_builder.hpp"
+#include "in_memory_index/document.hpp"
 #include <cctype>
 #include <string>
 #include <vector>
