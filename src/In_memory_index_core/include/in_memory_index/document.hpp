@@ -25,4 +25,4 @@ struct Document
     std::vector<std::string> text() const noexcept;
 };
 
-}
+} // namespace in_memory_index
