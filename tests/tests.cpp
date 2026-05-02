@@ -383,14 +383,14 @@ TEST_CASE("DocumentBuilder: normalizeWord handles numbers", "[document_builder]"
     REQUIRE(result == "test123");
 }
 
-// Проверяет: buildDocument нормализует только последнее слово в тексте.
-TEST_CASE("DocumentBuilder: buildDocument normalizes last word", "[document_builder]")
+// Проверяет: buildDocument нормализует все стова в тексте.
+TEST_CASE("DocumentBuilder: buildDocument normalizes all words", "[document_builder]")
 {
     auto doc = DocumentBuilder::buildDocument(1, "file.txt", "HELLO World TEST");
 
     REQUIRE(doc.content.size() == 3);
-    REQUIRE(doc.content[0] == "HELLO");
-    REQUIRE(doc.content[1] == "World");
+    REQUIRE(doc.content[0] == "hello");
+    REQUIRE(doc.content[1] == "world");
     REQUIRE(doc.content[2] == "test");
 }
 

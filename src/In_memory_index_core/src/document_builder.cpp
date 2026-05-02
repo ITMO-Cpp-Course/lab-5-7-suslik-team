@@ -25,7 +25,7 @@ std::vector<std::string> DocumentBuilder::splitWords(const std::string& text)
         {
             if (!word.empty())
             {
-                words.push_back(word);
+                words.push_back(normalizeWord(word));
                 word.clear();
             }
         }
