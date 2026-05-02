@@ -12,7 +12,7 @@ using DocId = int;
 
 class InvertedIndex
 {
-public:
+  public:
     void addDocument(Document doc);
 
     void addDocument(std::uint64_t id, const std::string& name, const std::string& text);
@@ -23,7 +23,7 @@ public:
     size_t documentCount() const;
     void clear();
 
-private:
+  private:
     std::unordered_map<std::string, std::unordered_map<DocId, int>> index_;
     std::unordered_map<DocId, Document> documents_;
 };

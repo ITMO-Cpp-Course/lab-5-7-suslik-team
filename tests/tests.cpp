@@ -68,7 +68,7 @@ TEST_CASE("InvertedIndex: search for non-existing word returns empty", "[index]"
 TEST_CASE("InvertedIndex: getWordOccurrences returns correct frequencies", "[index]")
 {
     InvertedIndex idx;
-    idx.addDocument(1, "", "hello hello world");   // hello=2, world=1
+    idx.addDocument(1, "", "hello hello world"); // hello=2, world=1
     idx.addDocument(2, "", "hello cplusplus");
     auto occ = idx.getWordOccurrences("hello");
     REQUIRE(occ.size() == 2);
