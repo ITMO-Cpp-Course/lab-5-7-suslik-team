@@ -73,7 +73,6 @@ TEST_CASE("InvertedIndex: search for non-existing word returns empty", "[index]"
     REQUIRE(result.empty());
 }
 
-
 // Проверяет: getWordOccurrences возвращает частоту слова в каждом документе.
 TEST_CASE("InvertedIndex: getWordOccurrences returns correct frequencies", "[index]")
 {
