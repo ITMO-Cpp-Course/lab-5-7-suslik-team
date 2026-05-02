@@ -1,16 +1,21 @@
 #include "in_memory_index/inverted_index.hpp"
 #include "in_memory_index/document_builder.hpp"
+#include <utility>
 
 namespace in_memory_index
 {
 
-void InvertedIndex::addDocument(DocId id, const std::vector<std::string>& words)
+void InvertedIndex::addDocument(Document doc)
 {
-    if (docWords_.find(id) != docWords_.end())
+    DocId id = static_cast<DocId>(doc.id);
+
+    if (documents_.find(id) != documents_.end())
     {
         removeDocument(id);
     }
-    docWords_[id] = words;
+
+    documents_.emplace(id, std::move(doc));
+    const auto& words = documents_.at(id).text();
     for (const auto& word : words)
     {
         std::string lowerWord = DocumentBuilder::normalizeWord(word);
@@ -18,38 +23,34 @@ void InvertedIndex::addDocument(DocId id, const std::vector<std::string>& words)
     }
 }
 
-void InvertedIndex::addDocument(const Document& doc)
+void InvertedIndex::addDocument(std::uint64_t id, const std::string& name, const std::string& text)
 {
-    addDocument(doc.id, doc.content);
-}
-
-void InvertedIndex::addDocument(DocId id, const std::string& name, const std::string& text)
-{
-    auto doc = DocumentBuilder::buildDocument(id, name, text);
-    addDocument(doc);
+    Document doc = DocumentBuilder::buildDocument(id, name, text);
+    addDocument(std::move(doc));
 }
 
 void InvertedIndex::removeDocument(DocId id)
 {
-    if (docWords_.find(id) != docWords_.end())
+    auto it = documents_.find(id);
+    if (it == documents_.end())
+        return;
+
+    const auto& words = it->second.text();
+    for (const auto& word : words)
     {
-        auto it = docWords_.find(id);
-        const auto& words = it->second;
-        for (const auto& word : words)
+        std::string lowerWord = DocumentBuilder::normalizeWord(word);
+        auto wordIt = index_.find(lowerWord);
+        if (wordIt != index_.end())
         {
-            std::string lowerWord = DocumentBuilder::normalizeWord(word);
-            auto wordIt = index_.find(lowerWord);
-            if (wordIt != index_.end())
+            wordIt->second.erase(id);
+            if (wordIt->second.empty())
             {
-                wordIt->second.erase(id);
-                if (wordIt->second.empty())
-                {
-                    index_.erase(wordIt);
-                }
+                index_.erase(wordIt);
             }
         }
-        docWords_.erase(it);
     }
+
+    documents_.erase(it);
 }
 
 std::vector<DocId> InvertedIndex::search(const std::string& word) const
@@ -57,10 +58,10 @@ std::vector<DocId> InvertedIndex::search(const std::string& word) const
     std::string normalized = DocumentBuilder::normalizeWord(word);
     auto it = index_.find(normalized);
     if (it == index_.end())
-    {
-        return std::vector<DocId>();
-    }
+        return {};
+
     std::vector<DocId> result;
+    result.reserve(it->second.size());
     for (const auto& pair : it->second)
     {
         result.push_back(pair.first);
@@ -73,21 +74,20 @@ std::unordered_map<DocId, int> InvertedIndex::getWordOccurrences(const std::stri
     std::string normalized = DocumentBuilder::normalizeWord(word);
     auto it = index_.find(normalized);
     if (it == index_.end())
-    {
-        return std::unordered_map<DocId, int>();
-    }
+        return {};
+
     return it->second;
 }
 
 size_t InvertedIndex::documentCount() const
 {
-    return docWords_.size();
+    return documents_.size();
 }
 
 void InvertedIndex::clear()
 {
     index_.clear();
-    docWords_.clear();
+    documents_.clear();
 }
 
 } // namespace in_memory_index

@@ -8,22 +8,23 @@
 
 namespace in_memory_index
 {
-using DocId = std::uint64_t;
+using DocId = int;
 
 class InvertedIndex
 {
-  public:
-    void addDocument(DocId id, const std::vector<std::string>& words);
-    void addDocument(const Document& doc);
-    void addDocument(DocId id, const std::string& name, const std::string& text);
+public:
+    void addDocument(Document doc);
+
+    void addDocument(std::uint64_t id, const std::string& name, const std::string& text);
+
     void removeDocument(DocId id);
     std::vector<DocId> search(const std::string& word) const;
     std::unordered_map<DocId, int> getWordOccurrences(const std::string& word) const;
     size_t documentCount() const;
     void clear();
 
-  private:
+private:
     std::unordered_map<std::string, std::unordered_map<DocId, int>> index_;
-    std::unordered_map<DocId, std::vector<std::string>> docWords_;
+    std::unordered_map<DocId, Document> documents_;
 };
 } // namespace in_memory_index
