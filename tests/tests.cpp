@@ -271,3 +271,138 @@ TEST_CASE("Document: modifying copy does not affect original", "[document]")
     REQUIRE(original.name == "original.txt");
     REQUIRE(original.content.size() == 2);
 }
+
+// Проверяет: buildDocument создаёт Document с правильными полями из сырого текста.
+TEST_CASE("DocumentBuilder: buildDocument creates document with correct fields", "[document_builder]")
+{
+    auto doc = DocumentBuilder::buildDocument(5, "test.txt", "hello world");
+
+    REQUIRE(doc.id == 5);
+    REQUIRE(doc.name == "test.txt");
+    REQUIRE(doc.content.size() == 2);
+    REQUIRE(doc.content[0] == "hello");
+    REQUIRE(doc.content[1] == "world");
+}
+
+// Проверяет: splitWords разбивает текст по пробельным символам.
+TEST_CASE("DocumentBuilder: splitWords splits text by whitespace", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("one two three");
+
+    REQUIRE(words.size() == 3);
+    REQUIRE(words[0] == "one");
+    REQUIRE(words[1] == "two");
+    REQUIRE(words[2] == "three");
+}
+
+// Проверяет: splitWords корректно обрабатывает знаки препинания.
+TEST_CASE("DocumentBuilder: splitWords handles punctuation", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("hello, world! test.");
+
+    REQUIRE(words.size() == 3);
+    REQUIRE(words[0] == "hello");
+    REQUIRE(words[1] == "world");
+    REQUIRE(words[2] == "test");
+}
+
+// Проверяет: splitWords сохраняет символ подчёркивания в словах.
+TEST_CASE("DocumentBuilder: splitWords keeps underscores in words", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("hello_world test_code");
+
+    REQUIRE(words.size() == 2);
+    REQUIRE(words[0] == "hello_world");
+    REQUIRE(words[1] == "test_code");
+}
+
+// Проверяет: splitWords разделяет слова по не буквенно-цифровым символам.
+TEST_CASE("DocumentBuilder: splitWords splits on non-alphanumeric chars", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("hello@world #test$code");
+
+    REQUIRE(words.size() == 4);
+    REQUIRE(words[0] == "hello");
+    REQUIRE(words[1] == "world");
+    REQUIRE(words[2] == "test");
+    REQUIRE(words[3] == "code");
+}
+
+// Проверяет: splitWords корректно обрабатывает пустую строку.
+TEST_CASE("DocumentBuilder: splitWords handles empty string", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("");
+
+    REQUIRE(words.empty());
+}
+
+// Проверяет: splitWords корректно обрабатывает строку только с пробелами.
+TEST_CASE("DocumentBuilder: splitWords handles whitespace only", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("   \t\n   ");
+
+    REQUIRE(words.empty());
+}
+
+// Проверяет: splitWords корректно обрабатывает несколько пробелов подряд.
+TEST_CASE("DocumentBuilder: splitWords handles multiple spaces between words", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("word1    word2   word3");
+
+    REQUIRE(words.size() == 3);
+}
+
+// Проверяет: normalizeWord преобразует символы в нижний регистр.
+TEST_CASE("DocumentBuilder: normalizeWord converts to lowercase", "[document_builder]")
+{
+    auto result = DocumentBuilder::normalizeWord("HELLO");
+    REQUIRE(result == "hello");
+
+    result = DocumentBuilder::normalizeWord("HeLLo");
+    REQUIRE(result == "hello");
+}
+
+// Проверяет: normalizeWord оставляет уже нижний регистр без изменений.
+TEST_CASE("DocumentBuilder: normalizeWord keeps lowercase unchanged", "[document_builder]")
+{
+    auto result = DocumentBuilder::normalizeWord("hello");
+    REQUIRE(result == "hello");
+}
+
+// Проверяет: normalizeWord корректно обрабатывает смешанный регистр.
+TEST_CASE("DocumentBuilder: normalizeWord handles mixed case", "[document_builder]")
+{
+    auto result = DocumentBuilder::normalizeWord("AbCdEf");
+    REQUIRE(result == "abcdef");
+}
+
+// Проверяет: normalizeWord сохраняет цифры в слове.
+TEST_CASE("DocumentBuilder: normalizeWord handles numbers", "[document_builder]")
+{
+    auto result = DocumentBuilder::normalizeWord("test123");
+    REQUIRE(result == "test123");
+}
+
+// Проверяет: buildDocument нормализует только последнее слово в тексте.
+TEST_CASE("DocumentBuilder: buildDocument normalizes last word", "[document_builder]")
+{
+    auto doc = DocumentBuilder::buildDocument(1, "file.txt", "HELLO World TEST");
+
+    REQUIRE(doc.content.size() == 3);
+    REQUIRE(doc.content[0] == "HELLO");
+    REQUIRE(doc.content[1] == "World");
+    REQUIRE(doc.content[2] == "test");
+}
+
+// Проверяет: splitWords корректно обрабатывает различные спецсимволы.
+TEST_CASE("DocumentBuilder: splitWords handles special characters", "[document_builder]")
+{
+    auto words = DocumentBuilder::splitWords("file.txt path/to/file");
+
+    REQUIRE(words.size() == 5);
+    REQUIRE(words[0] == "file");
+    REQUIRE(words[1] == "txt");
+    REQUIRE(words[2] == "path");
+    REQUIRE(words[3] == "to");
+    REQUIRE(words[4] == "file");
+}
