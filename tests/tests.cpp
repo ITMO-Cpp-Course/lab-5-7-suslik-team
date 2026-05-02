@@ -12,41 +12,59 @@ static bool contains(const std::vector<DocId>& vec, DocId id)
     return std::find(vec.begin(), vec.end(), id) != vec.end();
 }
 
-// ========== Тесты ==========
+// ========== Тесты InvertedIndex ==========
 
-// Проверяет: базовое добавление одного документа и поиск по слову.
-TEST_CASE("InvertedIndex: addDocument and search basic", "[index]")
+// Проверяет: addDocument(DocId, vector<string>) корректно добавляет слова в индекс.
+TEST_CASE("InvertedIndex: addDocument with vector adds words to index", "[index]")
 {
     InvertedIndex idx;
-
-    SECTION("Single document")
-    {
-        idx.addDocument(1, {"hello", "world"});
-        auto result = idx.search("hello");
-        REQUIRE(result.size() == 1);
-        REQUIRE(result[0] == 1);
-    }
-
-    SECTION("Multiple documents with overlapping words")
-    {
-        idx.addDocument(1, {"hello", "world"});
-        idx.addDocument(2, {"hello", "cplusplus"});
-        idx.addDocument(3, {"world"});
-
-        auto resultHello = idx.search("hello");
-        REQUIRE(resultHello.size() == 2);
-        REQUIRE(contains(resultHello, 1));
-        REQUIRE(contains(resultHello, 2));
-        REQUIRE_FALSE(contains(resultHello, 3));
-
-        auto resultWorld = idx.search("world");
-        REQUIRE(resultWorld.size() == 2);
-        REQUIRE(contains(resultWorld, 1));
-        REQUIRE(contains(resultWorld, 3));
-    }
+    idx.addDocument(1, {"hello", "world"});
+    auto result = idx.search("hello");
+    REQUIRE(result.size() == 1);
+    REQUIRE(result[0] == 1);
 }
 
-// Проверяет: поиск по несуществующему слову возвращает пустой вектор.
+// Проверяет: addDocument(const Document&) корректно добавляет документ в индекс.
+TEST_CASE("InvertedIndex: addDocument with Document adds document to index", "[index]")
+{
+    InvertedIndex idx;
+    Document doc(1, "test.txt", {"hello", "world"});
+    idx.addDocument(doc);
+    auto result = idx.search("hello");
+    REQUIRE(result.size() == 1);
+    REQUIRE(result[0] == 1);
+}
+
+// Проверяет: addDocument(DocId, name, text) создаёт документ через DocumentBuilder.
+TEST_CASE("InvertedIndex: addDocument with id name text creates document", "[index]")
+{
+    InvertedIndex idx;
+    idx.addDocument(1, "test.txt", "hello world test");
+    auto result = idx.search("world");
+    REQUIRE(result.size() == 1);
+    REQUIRE(result[0] == 1);
+}
+
+// Проверяет: search возвращает все документы, содержащие искомое слово.
+TEST_CASE("InvertedIndex: search returns documents containing word", "[index]")
+{
+    InvertedIndex idx;
+    idx.addDocument(1, {"hello", "world"});
+    idx.addDocument(2, {"hello", "cplusplus"});
+    idx.addDocument(3, {"world"});
+
+    auto resultHello = idx.search("hello");
+    REQUIRE(resultHello.size() == 2);
+    REQUIRE(contains(resultHello, 1));
+    REQUIRE(contains(resultHello, 2));
+
+    auto resultWorld = idx.search("world");
+    REQUIRE(resultWorld.size() == 2);
+    REQUIRE(contains(resultWorld, 1));
+    REQUIRE(contains(resultWorld, 3));
+}
+
+// Проверяет: search по несуществующему слову возвращает пустой вектор.
 TEST_CASE("InvertedIndex: search for non-existing word returns empty", "[index]")
 {
     InvertedIndex idx;
@@ -55,24 +73,31 @@ TEST_CASE("InvertedIndex: search for non-existing word returns empty", "[index]"
     REQUIRE(result.empty());
 }
 
-// Проверяет: getWordOccurrences возвращает правильные частоты слов для документов.
+
+// Проверяет: getWordOccurrences возвращает частоту слова в каждом документе.
 TEST_CASE("InvertedIndex: getWordOccurrences returns correct frequencies", "[index]")
 {
     InvertedIndex idx;
-    idx.addDocument(1, {"hello", "hello", "world"}); // "hello" 2 раза
-    idx.addDocument(2, {"hello", "cplusplus"});      // "hello" 1 раз
+    idx.addDocument(1, {"hello", "hello", "world"});
+    idx.addDocument(2, {"hello", "cplusplus"});
 
     auto occ = idx.getWordOccurrences("hello");
     REQUIRE(occ.size() == 2);
     REQUIRE(occ[1] == 2);
     REQUIRE(occ[2] == 1);
-
-    auto occMissing = idx.getWordOccurrences("missing");
-    REQUIRE(occMissing.empty());
 }
 
-// Проверяет: удаление документа полностью очищает его из индекса и обратной связи.
-TEST_CASE("InvertedIndex: removeDocument removes document from all structures", "[index]")
+// Проверяет: getWordOccurrences для отсутствующего слова возвращает пустую map.
+TEST_CASE("InvertedIndex: getWordOccurrences for missing word returns empty", "[index]")
+{
+    InvertedIndex idx;
+    idx.addDocument(1, {"hello"});
+    auto occ = idx.getWordOccurrences("missing");
+    REQUIRE(occ.empty());
+}
+
+// Проверяет: removeDocument полностью удаляет документ из индекса.
+TEST_CASE("InvertedIndex: removeDocument removes document from index", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"apple", "banana"});
@@ -85,35 +110,35 @@ TEST_CASE("InvertedIndex: removeDocument removes document from all structures", 
     auto result = idx.search("apple");
     REQUIRE(result.size() == 1);
     REQUIRE(result[0] == 2);
-    REQUIRE_FALSE(contains(idx.search("banana"), 1)); // пустой вектор, так как нет документов с banana
+    REQUIRE(idx.search("banana").empty());
 }
 
-// Проверяет: попытка удалить несуществующий документ не влияет на индекс.
-TEST_CASE("InvertedIndex: removing non-existing document does nothing", "[index]")
+// Проверяет: удаление несуществующего документа не влияет на индекс.
+TEST_CASE("InvertedIndex: remove non-existing document does nothing", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"hello"});
-    idx.removeDocument(999); // не существует
+    idx.removeDocument(999);
     REQUIRE(idx.documentCount() == 1);
     REQUIRE(idx.search("hello").size() == 1);
 }
 
-// Проверяет: добавление документа с уже существующим ID перезаписывает старый документ.
-TEST_CASE("InvertedIndex: adding document with existing ID replaces it", "[index]")
+// Проверяет: добавление документа с существующим ID перезаписывает старый.
+TEST_CASE("InvertedIndex: addDocument with existing ID replaces document", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"hello", "world"});
-    idx.addDocument(1, {"new", "words"}); // перезапись
+    idx.addDocument(1, {"new", "words"});
 
     REQUIRE(idx.documentCount() == 1);
     auto result = idx.search("hello");
-    REQUIRE(result.empty()); // старые слова удалены
+    REQUIRE(result.empty());
     result = idx.search("new");
     REQUIRE(result.size() == 1);
     REQUIRE(result[0] == 1);
 }
 
-// Проверяет: documentCount возвращает корректное количество документов.
+// Проверяет: documentCount возвращает актуальное количество документов.
 TEST_CASE("InvertedIndex: documentCount returns correct number", "[index]")
 {
     InvertedIndex idx;
@@ -128,8 +153,8 @@ TEST_CASE("InvertedIndex: documentCount returns correct number", "[index]")
     REQUIRE(idx.documentCount() == 0);
 }
 
-// Проверяет: метод clear полностью очищает индекс (удаляет все документы и слова).
-TEST_CASE("InvertedIndex: clear removes all data", "[index]")
+// Проверяет: clear полностью очищает индекс.
+TEST_CASE("InvertedIndex: clear removes all documents and words", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"hello", "world"});
@@ -140,18 +165,18 @@ TEST_CASE("InvertedIndex: clear removes all data", "[index]")
     REQUIRE(idx.getWordOccurrences("world").empty());
 }
 
-// Проверяет: повторяющиеся слова в одном документе корректно увеличивают счётчик.
-TEST_CASE("InvertedIndex: duplicate words in a document are handled correctly", "[index]")
+// Проверяет: повторяющиеся слова в документе корректно подсчитываются.
+TEST_CASE("InvertedIndex: duplicate words in document increase count", "[index]")
 {
     InvertedIndex idx;
-    idx.addDocument(1, {"word", "word", "word"}); // 3 раза
+    idx.addDocument(1, {"word", "word", "word"});
     auto occ = idx.getWordOccurrences("word");
     REQUIRE(occ[1] == 3);
     REQUIRE(idx.search("word").size() == 1);
 }
 
-// Проверяет: разные документы с разной частотой одного слова — частоты сохраняются правильно.
-TEST_CASE("InvertedIndex: multiple documents with same word and different counts", "[index]")
+// Проверяет: разные документы с разной частотой слова сохраняют свои счётчики.
+TEST_CASE("InvertedIndex: multiple documents with same word have correct counts", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"common", "common"});
@@ -164,8 +189,8 @@ TEST_CASE("InvertedIndex: multiple documents with same word and different counts
     REQUIRE(occ.size() == 3);
 }
 
-// Проверяет: после удаления некоторых документов, их ID не остаются в поиске по слову.
-TEST_CASE("InvertedIndex: search after removal of some documents does not keep stale entries", "[index]")
+// Проверяет: после удаления документа его id не остаётся в поиске.
+TEST_CASE("InvertedIndex: search after removal does not keep stale entries", "[index]")
 {
     InvertedIndex idx;
     idx.addDocument(1, {"apple"});
