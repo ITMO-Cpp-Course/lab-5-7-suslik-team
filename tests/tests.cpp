@@ -177,3 +177,97 @@ TEST_CASE("InvertedIndex: search after removal of some documents does not keep s
     REQUIRE(result[0] == 1);
     REQUIRE_FALSE(contains(result, 2));
 }
+
+// Проверяет: конструктор по умолчанию создаёт документ с пустыми полями.
+TEST_CASE("Document: default constructor creates empty document", "[document]")
+{
+    Document doc;
+    REQUIRE(doc.id == 0);
+    REQUIRE(doc.name.empty());
+    REQUIRE(doc.content.empty());
+}
+
+// Проверяет: конструктор с параметрами корректно инициализирует все поля.
+TEST_CASE("Document: parameterized constructor sets all fields", "[document]")
+{
+    std::vector<std::string> words = {"hello", "world"};
+    Document doc(42, "test.txt", words);
+
+    REQUIRE(doc.id == 42);
+    REQUIRE(doc.name == "test.txt");
+    REQUIRE(doc.content.size() == 2);
+    REQUIRE(doc.content[0] == "hello");
+    REQUIRE(doc.content[1] == "world");
+}
+
+// Проверяет: метод text() возвращает содержимое документа в виде вектора строк.
+TEST_CASE("Document: text() returns content as vector", "[document]")
+{
+    Document doc(1, "file.txt", {"word1", "word2", "word3"});
+    auto text = doc.text();
+
+    REQUIRE(text.size() == 3);
+    REQUIRE(text[0] == "word1");
+    REQUIRE(text[1] == "word2");
+    REQUIRE(text[2] == "word3");
+}
+
+// Проверяет: конструктор копирования создаёт независимую копию объекта.
+TEST_CASE("Document: copy constructor works correctly", "[document]")
+{
+    Document original(1, "original.txt", {"a", "b", "c"});
+    Document copy(original);
+
+    REQUIRE(copy.id == original.id);
+    REQUIRE(copy.name == original.name);
+    REQUIRE(copy.content == original.content);
+}
+
+// Проверяет: конструктор перемещения переносит данные без копирования.
+TEST_CASE("Document: move constructor works correctly", "[document]")
+{
+    Document original(1, "original.txt", {"a", "b", "c"});
+    Document moved(std::move(original));
+
+    REQUIRE(moved.id == 1);
+    REQUIRE(moved.name == "original.txt");
+    REQUIRE(moved.content.size() == 3);
+}
+
+// Проверяет: оператор присваивания копированием корректно копирует данные.
+TEST_CASE("Document: copy assignment works correctly", "[document]")
+{
+    Document original(1, "original.txt", {"a", "b"});
+    Document copy;
+    copy = original;
+
+    REQUIRE(copy.id == original.id);
+    REQUIRE(copy.name == original.name);
+    REQUIRE(copy.content == original.content);
+}
+
+// Проверяет: оператор присваивания перемещением переносит данные.
+TEST_CASE("Document: move assignment works correctly", "[document]")
+{
+    Document original(1, "original.txt", {"a", "b"});
+    Document moved;
+    moved = std::move(original);
+
+    REQUIRE(moved.id == 1);
+    REQUIRE(moved.name == "original.txt");
+    REQUIRE(moved.content.size() == 2);
+}
+
+// Проверяет: копия документа независима от оригинала (глубокое копирование).
+TEST_CASE("Document: modifying copy does not affect original", "[document]")
+{
+    Document original(1, "original.txt", {"a", "b"});
+    Document copy(original);
+    copy.id = 999;
+    copy.name = "changed.txt";
+    copy.content = {"x", "y"};
+
+    REQUIRE(original.id == 1);
+    REQUIRE(original.name == "original.txt");
+    REQUIRE(original.content.size() == 2);
+}
