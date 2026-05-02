@@ -17,7 +17,7 @@ std::vector<std::string> DocumentBuilder::splitWords(const std::string& text)
     std::string word;
     for (char ch : text)
     {
-        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')
+        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '-')
         {
             word.push_back(ch);
         }
