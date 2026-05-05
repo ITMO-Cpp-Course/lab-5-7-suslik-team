@@ -40,4 +40,5 @@ if (ENABLE_SANITIZERS AND NOT WIN32)
 endif ()
 
 add_subdirectory(src/In_memory_index_core)
+add_subdirectory(src/Index_transaction_core) 
 add_subdirectory(tests)

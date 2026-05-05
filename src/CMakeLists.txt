@@ -1,7 +1,5 @@
-add_library(inverted_index STATIC
-    inverted_index.cpp
-    document_builder.cpp
-    document.cpp
-)
+add_subdirectory(In_memory_index_core)
+add_subdirectory(Index_transaction_core)
 
-target_include_directories(inverted_index PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(index_core INTERFACE)
+target_link_libraries(index_core INTERFACE in_memory_index_core index_transaction_core)
