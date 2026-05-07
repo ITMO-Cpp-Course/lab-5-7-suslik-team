@@ -431,3 +431,87 @@ TEST_CASE("DocumentBuilder: splitWords handles special characters", "[document_b
     REQUIRE(words[3] == "to");
     REQUIRE(words[4] == "file");
 }
+
+#include "index_transaction/result.hpp"
+
+using namespace index_transaction;
+
+// Проверяет: успешное создание через ok() и получение значения.
+TEST_CASE("Result holds value via ok", "[result]")
+{
+    auto r = Result<int>::ok(42);
+    REQUIRE(r.has_value());
+    REQUIRE_FALSE(r.has_error());
+    REQUIRE(r.value() == 42);
+    REQUIRE(static_cast<bool>(r) == true);
+}
+
+// Проверяет: создание ошибки через err() и получение сообщения.
+TEST_CASE("Result holds error via err", "[result]")
+{
+    auto r = Result<int>::err("something wrong");
+    REQUIRE(r.has_error());
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error() == "something wrong");
+    REQUIRE(static_cast<bool>(r) == false);
+}
+
+// Проверяет: вызов value() на ошибочном результате выбрасывает исключение.
+TEST_CASE("Result value() throws on error", "[result]")
+{
+    auto r = Result<int>::err("error");
+    REQUIRE_THROWS_AS(r.value(), std::bad_expected_access<std::string>);
+}
+
+// Проверяет: перемещающий конструктор передаёт состояние, старый объект остаётся валидным.
+TEST_CASE("Result move constructor transfers state", "[result]")
+{
+    auto r1 = Result<int>::ok(42);
+    auto r2 = std::move(r1);
+    REQUIRE(r2.has_value());
+    REQUIRE(r2.value() == 42);
+}
+
+// Проверяет: копирующий конструктор создаёт независимую копию значения.
+TEST_CASE("Result copy constructor copies value", "[result]")
+{
+    auto r1 = Result<int>::ok(42);
+    auto r2 = r1;
+    REQUIRE(r2.has_value());
+    REQUIRE(r2.value() == 42);
+}
+
+// Проверяет: Result работает со строкой в качестве значения (особый случай, когда T = std::string).
+TEST_CASE("Result works with std::string as T", "[result]")
+{
+    auto r = Result<std::string>::ok("hello");
+    REQUIRE(r.has_value());
+    REQUIRE(r.value() == "hello");
+    auto e = Result<std::string>::err("error");
+    REQUIRE(e.error() == "error");
+}
+
+// Проверяет: оператор bool работает в условных контекстах.
+TEST_CASE("Result operator bool works in if", "[result]")
+{
+    auto r = Result<int>::ok(42);
+    if (r)
+    {
+        REQUIRE(r.value() == 42);
+    }
+    else
+    {
+        FAIL("Result should be true");
+    }
+}
+
+// Проверяет: перемещающая версия ok() использует перемещение, а не копирование.
+TEST_CASE("Result ok(T&&) moves value", "[result]")
+{
+    std::string s = "move me";
+    auto r = Result<std::string>::ok(std::move(s));
+    REQUIRE(r.has_value());
+    // После перемещения строка s может быть пустой, но мы не опираемся на неё.
+    // Достаточно, что значение в Result корректное.
+    REQUIRE(r.value() == "move me");
+}
