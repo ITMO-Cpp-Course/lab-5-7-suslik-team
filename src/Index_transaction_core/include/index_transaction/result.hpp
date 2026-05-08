@@ -60,4 +60,53 @@ template <typename T> class Result
     Result(T&& value) : data_(std::move(value)) {}
     Result(std::unexpected<std::string> error) : data_(std::move(error)) {}
 };
+
+template <> class Result<void>
+{
+  public:
+    static Result<void> ok()
+    {
+        return Result();
+    }
+
+    static Result<void> err(const std::string& error)
+    {
+        return Result(std::unexpected(error));
+    }
+
+    static Result<void> err(std::string&& error)
+    {
+        return Result(std::unexpected(std::move(error)));
+    }
+
+    bool has_value() const noexcept
+    {
+        return data_.has_value();
+    }
+
+    bool has_error() const noexcept
+    {
+        return !has_value();
+    }
+
+    void value() const
+    {
+        data_.value();
+    }
+
+    std::string error() const
+    {
+        return data_.error();
+    }
+
+    explicit operator bool() const noexcept
+    {
+        return has_value();
+    }
+
+  private:
+    std::expected<void, std::string> data_;
+    Result() = default;
+    Result(std::unexpected<std::string> error) : data_(std::move(error)) {}
+};
 } // namespace index_transaction
