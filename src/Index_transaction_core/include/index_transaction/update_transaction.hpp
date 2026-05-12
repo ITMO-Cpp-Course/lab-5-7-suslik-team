@@ -16,6 +16,8 @@ public:
     
     UpdateTransaction(const UpdateTransaction&) = delete;
     UpdateTransaction& operator=(const UpdateTransaction&) = delete;
+
+    UpdateTransaction(UpdateTransaction&&) = default;
     
     Result<void> addDocument(const in_memory_index::Document& doc);
     Result<void> addDocument(std::uint64_t id, const std::string& name, const std::string& text);

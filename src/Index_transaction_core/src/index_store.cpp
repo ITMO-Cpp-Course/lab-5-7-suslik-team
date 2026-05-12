@@ -1,5 +1,4 @@
-#pragma once
-
+#include "index_transaction/update_transaction.hpp"
 #include "index_transaction/index_store.hpp"
 #include "in_memory_index/document_builder.hpp"
 
@@ -7,6 +6,7 @@ namespace in_memory_index
 {
 
 using index_transaction::Result;
+using index_transaction::UpdateTransaction;
 
 Result<void> IndexStore::addDocument(const Document& doc)
 {
@@ -53,5 +53,10 @@ size_t IndexStore::documentCount() const noexcept
 void IndexStore::clear() noexcept
 {
     index_.clear();
+}
+
+Result<UpdateTransaction> IndexStore::beginTransaction()
+{
+    return Result<UpdateTransaction>::ok(UpdateTransaction(*this));
 }
 } // namespace in_memory_index

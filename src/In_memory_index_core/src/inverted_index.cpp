@@ -1,6 +1,5 @@
 #include "in_memory_index/inverted_index.hpp"
 #include "in_memory_index/document_builder.hpp"
-#include <utility>
 
 namespace in_memory_index
 {

@@ -64,17 +64,17 @@ template <typename T> class Result
 template <> class Result<void>
 {
   public:
-    static Result<void> ok()
+    static Result ok()
     {
         return Result();
     }
 
-    static Result<void> err(const std::string& error)
+    static Result err(const std::string& error)
     {
         return Result(std::unexpected(error));
     }
 
-    static Result<void> err(std::string&& error)
+    static Result err(std::string&& error)
     {
         return Result(std::unexpected(std::move(error)));
     }

@@ -2,15 +2,22 @@
 #include <in_memory_index/document.hpp>
 #include <in_memory_index/document_builder.hpp>
 #include <in_memory_index/inverted_index.hpp>
+#include <index_transaction/index_store.hpp>
 #include <string>
 #include <vector>
 
 using namespace in_memory_index;
 
 // Вспомогательная функция для проверки наличия ID в векторе
-static bool contains(const std::vector<DocId>& vec, DocId id)
+static bool contains(const std::vector<uint64_t>& vec, uint64_t id)
 {
     return std::find(vec.begin(), vec.end(), id) != vec.end();
+}
+// Вспомогательная функция: проверяет, есть ли в векторе документов документ с заданным id
+static bool contains_document_with_id(const std::vector<Document>& docs, uint64_t id)
+{
+    return std::find_if(docs.begin(), docs.end(),
+                        [id](const Document& doc) { return doc.id == id; }) != docs.end();
 }
 
 // ========== Тесты InvertedIndex ==========
@@ -110,17 +117,22 @@ TEST_CASE("InvertedIndex: remove non-existing document does nothing", "[index]")
     REQUIRE(idx.search("hello").size() == 1);
 }
 
-// Проверяет: добавление документа с существующим ID перезаписывает старый.
-TEST_CASE("InvertedIndex: addDocument with existing ID replaces document", "[index]")
+// Проверяет: добавление документа с уже существующим ID возвращает ошибку и не заменяет старый документ.
+TEST_CASE("InvertedIndex: addDocument with existing ID returns error and keeps original document", "[index]")
 {
     InvertedIndex idx;
-    idx.addDocument(1, "first", "hello world");
-    idx.addDocument(1, "second", "new words");
+    auto first = idx.addDocument(1, "first", "hello world");
+    REQUIRE(first.has_value());
     REQUIRE(idx.documentCount() == 1);
-    REQUIRE(idx.search("hello").empty());
-    auto result = idx.search("new");
+    REQUIRE(idx.search("hello").size() == 1);
+    auto second = idx.addDocument(1, "second", "new words");
+    REQUIRE(second.has_error());
+    REQUIRE(second.error() == "Document id 1 already exists");
+    REQUIRE(idx.documentCount() == 1);
+    auto result = idx.search("hello");
     REQUIRE(result.size() == 1);
     REQUIRE(result[0] == 1);
+    REQUIRE(idx.search("new").empty());
 }
 
 // Проверяет: documentCount возвращает актуальное количество документов.
@@ -514,4 +526,201 @@ TEST_CASE("Result ok(T&&) moves value", "[result]")
     // После перемещения строка s может быть пустой, но мы не опираемся на неё.
     // Достаточно, что значение в Result корректное.
     REQUIRE(r.value() == "move me");
+}
+// ========== Тесты IndexStore ==========
+
+// Проверяет: addDocument добавляет документ успешно.
+TEST_CASE("IndexStore: addDocument adds document successfully", "[index_store]")
+{
+    IndexStore store;
+    auto doc = DocumentBuilder::buildDocument(1, "file.txt", "hello world");
+    auto result = store.addDocument(doc);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: addDocument с дубликатом id возвращает ошибку и не меняет состояние.
+TEST_CASE("IndexStore: addDocument with duplicate id returns error", "[index_store]")
+{
+    IndexStore store;
+    auto doc1 = DocumentBuilder::buildDocument(1, "first.txt", "content");
+    auto doc2 = DocumentBuilder::buildDocument(1, "second.txt", "other content");
+    REQUIRE(store.addDocument(doc1).has_value());
+    auto result = store.addDocument(doc2);
+    REQUIRE(result.has_error());
+    REQUIRE(result.error() == "Document id 1 already exists");
+    REQUIRE(store.documentCount() == 1); // состояние не изменилось
+}
+
+// Проверяет: removeDocument удаляет существующий документ из индекса.
+TEST_CASE("IndexStore: removeDocument removes existing document", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple banana"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "apple cherry"));
+    REQUIRE(store.documentCount() == 2);
+    auto result = store.removeDocument(1);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchResult = store.search("apple");
+    REQUIRE(searchResult.has_value());
+    REQUIRE(searchResult.value().size() == 1);
+    REQUIRE(contains_document_with_id(searchResult.value(), 2));
+}
+
+// Проверяет: removeDocument для несуществующего id возвращает ошибку.
+TEST_CASE("IndexStore: removeDocument for non-existing id returns error", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello"));
+    auto result = store.removeDocument(999);
+    REQUIRE(result.has_error());
+    REQUIRE(result.error() == "Document id 999 not found");
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: search возвращает все документы, содержащие искомое слово.
+TEST_CASE("IndexStore: search returns documents containing word", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "hello cpp"));
+    store.addDocument(DocumentBuilder::buildDocument(3, "doc3.txt", "world"));
+    auto result = store.search("hello");
+    REQUIRE(result.has_value());
+    const auto& docs = result.value();
+    REQUIRE(docs.size() == 2);
+    REQUIRE(contains_document_with_id(docs, 1));
+    REQUIRE(contains_document_with_id(docs, 2));
+    REQUIRE_FALSE(contains_document_with_id(docs, 3));
+}
+
+// Проверяет: search по несуществующему слову возвращает пустой вектор.
+TEST_CASE("IndexStore: search for non-existing word returns empty", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "apple banana"));
+    auto result = store.search("nonexistent");
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().empty());
+}
+
+// Проверяет: getWordOccurrences возвращает корректные частоты вхождения слова.
+TEST_CASE("IndexStore: getWordOccurrences returns correct frequencies", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "hello cpp"));
+    auto result = store.getWordOccurrences("hello");
+    REQUIRE(result.has_value());
+    const auto& freq = result.value();
+    REQUIRE(freq.size() == 2);
+    REQUIRE(freq.at(1) == 2);
+    REQUIRE(freq.at(2) == 1);
+}
+
+// Проверяет: getWordOccurrences для отсутствующего слова возвращает пустую map.
+TEST_CASE("IndexStore: getWordOccurrences for missing word returns empty", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    auto result = store.getWordOccurrences("missing");
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().empty());
+}
+
+// Проверяет: documentCount возвращает актуальное количество документов.
+TEST_CASE("IndexStore: documentCount returns correct number", "[index_store]")
+{
+    IndexStore store;
+    REQUIRE(store.documentCount() == 0);
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "a"));
+    REQUIRE(store.documentCount() == 1);
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "b"));
+    REQUIRE(store.documentCount() == 2);
+    store.removeDocument(1);
+    REQUIRE(store.documentCount() == 1);
+    store.clear();
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: clear полностью очищает индекс от всех документов и слов.
+TEST_CASE("IndexStore: clear removes all documents and words", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "foo bar"));
+    store.clear();
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+    auto occRes = store.getWordOccurrences("world");
+    REQUIRE(occRes.has_value());
+    REQUIRE(occRes.value().empty());
+}
+
+// Проверяет: несколько документов с одинаковым словом — все находятся.
+TEST_CASE("IndexStore: multiple documents with same word are all found", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "common"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "common common"));
+    store.addDocument(DocumentBuilder::buildDocument(3, "doc3.txt", "uncommon"));
+    auto result = store.search("common");
+    REQUIRE(result.has_value());
+    const auto& docs = result.value();
+    REQUIRE(docs.size() == 2);
+    REQUIRE(contains_document_with_id(docs, 1));
+    REQUIRE(contains_document_with_id(docs, 2));
+}
+
+// Проверяет: поиск регистронезависим благодаря нормализации DocumentBuilder.
+TEST_CASE("IndexStore: search is case insensitive via DocumentBuilder", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "Hello WORLD"));
+    auto result1 = store.search("hello");
+    REQUIRE(result1.has_value());
+    REQUIRE(result1.value().size() == 1);
+    auto result2 = store.search("HELLO");
+    REQUIRE(result2.has_value());
+    REQUIRE(result2.value().size() == 1);
+    auto result3 = store.search("world");
+    REQUIRE(result3.has_value());
+    REQUIRE(result3.value().size() == 1);
+}
+
+// Проверяет: после удаления документа он не появляется ни в поиске, ни в частотах.
+TEST_CASE("IndexStore: after removal, document does not appear in search or occurrences", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple apple"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "apple banana"));
+    store.removeDocument(1);
+    auto searchRes = store.search("apple");
+    REQUIRE(searchRes.has_value());
+    const auto& docs = searchRes.value();
+    REQUIRE(docs.size() == 1);
+    REQUIRE(docs[0].id == 2);
+    auto occRes = store.getWordOccurrences("apple");
+    REQUIRE(occRes.has_value());
+    const auto& freq = occRes.value();
+    REQUIRE(freq.size() == 1);
+    REQUIRE(freq.count(1) == 0);
+    REQUIRE(freq.at(2) == 1);
+}
+
+// Проверяет: перегрузка addDocument с id, name, text корректно работает.
+TEST_CASE("IndexStore: addDocument with id, name, text overload works", "[index_store]")
+{
+    IndexStore store;
+    auto result = store.addDocument(10, "doc10.txt", "test document");
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("test");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 10);
+    REQUIRE(searchRes.value()[0].name == "doc10.txt");
 }
