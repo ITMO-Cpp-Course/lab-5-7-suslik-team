@@ -1,6 +1,6 @@
-#include "index_transaction/update_transaction.hpp"
 #include "index_transaction/index_store.hpp"
 #include "in_memory_index/document_builder.hpp"
+#include "index_transaction/update_transaction.hpp"
 
 namespace in_memory_index
 {

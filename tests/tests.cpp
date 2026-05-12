@@ -16,8 +16,7 @@ static bool contains(const std::vector<uint64_t>& vec, uint64_t id)
 // Вспомогательная функция: проверяет, есть ли в векторе документов документ с заданным id
 static bool contains_document_with_id(const std::vector<Document>& docs, uint64_t id)
 {
-    return std::find_if(docs.begin(), docs.end(),
-                        [id](const Document& doc) { return doc.id == id; }) != docs.end();
+    return std::find_if(docs.begin(), docs.end(), [id](const Document& doc) { return doc.id == id; }) != docs.end();
 }
 
 // ========== Тесты InvertedIndex ==========
