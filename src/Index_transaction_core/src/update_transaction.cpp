@@ -39,11 +39,17 @@ Result<void> UpdateTransaction::addDocument(std::uint64_t id, const std::string&
 
 Result<void> UpdateTransaction::removeDocument(std::uint64_t id)
 {
+    auto docResult = store_.getDocument(id);
+    if (!docResult.has_value())
+    {
+        return Result<void>::err(docResult.error());
+    }
+    in_memory_index::Document savedDoc = docResult.value();
+
     auto result = store_.removeDocument(id);
     if (result.has_value())
     {
-        in_memory_index::Document placeholderDoc;
-        rollbackLog_.push_back({RollbackOperation::Type::ADD, id, placeholderDoc, true});
+        rollbackLog_.push_back({RollbackOperation::Type::ADD, id, savedDoc, false});
     }
     return result;
 }

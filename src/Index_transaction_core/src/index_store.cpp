@@ -23,6 +23,11 @@ Result<void> IndexStore::removeDocument(std::uint64_t id)
     return index_.removeDocument(id);
 }
 
+Result<Document> IndexStore::getDocument(std::uint64_t id) const
+{
+    return index_.getDocument(id);
+}
+
 Result<std::vector<Document>> IndexStore::search(const std::string& word) const
 {
     std::vector<std::uint64_t> ids = index_.search(word);

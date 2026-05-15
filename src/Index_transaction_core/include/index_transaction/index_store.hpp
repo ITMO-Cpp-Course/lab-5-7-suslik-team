@@ -22,6 +22,7 @@ class IndexStore
     index_transaction::Result<void> addDocument(const Document& doc);
     index_transaction::Result<void> addDocument(std::uint64_t id, const std::string& name, const std::string& text);
     index_transaction::Result<void> removeDocument(std::uint64_t id);
+    index_transaction::Result<Document> getDocument(std::uint64_t id) const;
     index_transaction::Result<std::vector<Document>> search(const std::string& word) const;
     index_transaction::Result<std::unordered_map<std::uint64_t, int>> getWordOccurrences(const std::string& word) const;
 

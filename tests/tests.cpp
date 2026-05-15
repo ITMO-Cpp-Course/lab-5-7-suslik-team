@@ -3,6 +3,7 @@
 #include <in_memory_index/document_builder.hpp>
 #include <in_memory_index/inverted_index.hpp>
 #include <index_transaction/index_store.hpp>
+#include "index_transaction/update_transaction.hpp"
 #include <string>
 #include <vector>
 
@@ -722,4 +723,281 @@ TEST_CASE("IndexStore: addDocument with id, name, text overload works", "[index_
     REQUIRE(searchRes.value().size() == 1);
     REQUIRE(searchRes.value()[0].id == 10);
     REQUIRE(searchRes.value()[0].name == "doc10.txt");
+}
+
+// ========== Тесты UpdateTransaction ==========
+
+// Проверяет: addDocument(Document) успешно добавляет документ в store.
+TEST_CASE("UpdateTransaction: addDocument with Document adds document to store", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    auto doc = DocumentBuilder::buildDocument(1, "file.txt", "hello world");
+    auto result = tx.addDocument(doc);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: addDocument(id, name, text) успешно добавляет документ через перегрузку.
+TEST_CASE("UpdateTransaction: addDocument with id, name, text overload adds document", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    auto result = tx.addDocument(42, "doc.txt", "hello world");
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("world");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 42);
+}
+
+// Проверяет: addDocument с дублирующимся id возвращает ошибку и не меняет состояние store.
+TEST_CASE("UpdateTransaction: addDocument with duplicate id returns error", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "existing.txt", "existing content"));
+    UpdateTransaction tx(store);
+    auto result = tx.addDocument(1, "duplicate.txt", "other content");
+    REQUIRE(result.has_error());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("other");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: removeDocument успешно удаляет существующий документ из store.
+TEST_CASE("UpdateTransaction: removeDocument removes existing document", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    UpdateTransaction tx(store);
+    auto result = tx.removeDocument(1);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: removeDocument для несуществующего id возвращает ошибку.
+TEST_CASE("UpdateTransaction: removeDocument for non-existing id returns error", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello"));
+    UpdateTransaction tx(store);
+    auto result = tx.removeDocument(999);
+    REQUIRE(result.has_error());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: commit фиксирует изменения — после commit деструктор не откатывает добавленные документы.
+TEST_CASE("UpdateTransaction: commit persists added documents after destruction", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "doc.txt", "hello world").has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+}
+
+// Проверяет: commit фиксирует изменения — после commit деструктор не откатывает удалённые документы.
+TEST_CASE("UpdateTransaction: commit persists removed documents after destruction", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: деструктор без commit откатывает добавленные документы.
+TEST_CASE("UpdateTransaction: destructor without commit rolls back added documents", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "doc.txt", "hello world").has_value());
+        REQUIRE(store.documentCount() == 1);
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: деструктор без commit откатывает удалённые документы — документ возвращается в store.
+TEST_CASE("UpdateTransaction: destructor without commit rolls back removed documents", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());
+        REQUIRE(store.documentCount() == 0);
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: rollback нескольких операций выполняется в обратном порядке.
+TEST_CASE("UpdateTransaction: rollback of multiple operations happens in reverse order", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "banana"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());                    // шаг 1: удалить doc 1
+        REQUIRE(tx.removeDocument(2).has_value());                    // шаг 2: удалить doc 2
+        REQUIRE(tx.addDocument(3, "doc3.txt", "cherry").has_value()); // шаг 3: добавить doc 3
+        REQUIRE(store.documentCount() == 1);                          // только doc 3 в store
+        // tx уничтожается без commit — откат в обратном порядке: удалить 3, вернуть 2, вернуть 1
+    }
+    REQUIRE(store.documentCount() == 2);
+    REQUIRE_FALSE(contains_document_with_id(store.search("cherry").value(), 3));
+    REQUIRE(contains_document_with_id(store.search("apple").value(), 1));
+    REQUIRE(contains_document_with_id(store.search("banana").value(), 2));
+}
+
+// Проверяет: commit очищает лог rollback — повторный коммит возвращает успех и не меняет состояние.
+TEST_CASE("UpdateTransaction: commit clears rollback log and returns ok", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    REQUIRE(tx.addDocument(1, "doc.txt", "hello").has_value());
+    auto commitResult = tx.commit();
+    REQUIRE(commitResult.has_value());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: смешанные операции add и remove корректно откатываются при разрушении без commit.
+TEST_CASE("UpdateTransaction: mixed add and remove rollback correctly without commit", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(10, "old.txt", "old content"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(20, "new.txt", "new content").has_value());
+        REQUIRE(tx.removeDocument(10).has_value());
+        REQUIRE(store.documentCount() == 1); // только doc 20
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 1); // вернулся только doc 10
+    auto resOld = store.search("old");
+    REQUIRE(resOld.has_value());
+    REQUIRE(resOld.value().size() == 1);
+    REQUIRE(resOld.value()[0].id == 10);
+    auto resNew = store.search("new");
+    REQUIRE(resNew.has_value());
+    REQUIRE(resNew.value().empty());
+}
+
+// Проверяет: несколько addDocument внутри одной транзакции — все откатываются при разрушении без commit.
+TEST_CASE("UpdateTransaction: multiple addDocuments all rolled back without commit", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "a.txt", "alpha").has_value());
+        REQUIRE(tx.addDocument(2, "b.txt", "beta").has_value());
+        REQUIRE(tx.addDocument(3, "c.txt", "gamma").has_value());
+        REQUIRE(store.documentCount() == 3);
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: несколько addDocument внутри одной транзакции — все фиксируются после commit.
+TEST_CASE("UpdateTransaction: multiple addDocuments all committed", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "a.txt", "alpha").has_value());
+        REQUIRE(tx.addDocument(2, "b.txt", "beta").has_value());
+        REQUIRE(tx.addDocument(3, "c.txt", "gamma").has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 3);
+    REQUIRE(contains_document_with_id(store.search("alpha").value(), 1));
+    REQUIRE(contains_document_with_id(store.search("beta").value(), 2));
+    REQUIRE(contains_document_with_id(store.search("gamma").value(), 3));
+}
+
+// Проверяет: транзакция на пустом store без операций — commit и деструктор работают без ошибок.
+TEST_CASE("UpdateTransaction: empty transaction commit is a no-op", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: транзакция на пустом store без операций — деструктор без commit работает без ошибок.
+TEST_CASE("UpdateTransaction: empty transaction destructor without commit is a no-op", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        // уничтожается без commit — не должно быть ошибок
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: ошибочный addDocument не попадает в лог rollback — откат не трогает store.
+TEST_CASE("UpdateTransaction: failed addDocument is not added to rollback log", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "original"));
+    {
+        UpdateTransaction tx(store);
+        auto result = tx.addDocument(1, "dup.txt", "duplicate"); // должен вернуть ошибку
+        REQUIRE(result.has_error());
+        // tx уничтожается без commit — rollback не должен пытаться удалить doc 1
+    }
+    // doc 1 должен остаться в store
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("original");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: ошибочный removeDocument не попадает в лог rollback — откат не трогает store.
+TEST_CASE("UpdateTransaction: failed removeDocument is not added to rollback log", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello"));
+    {
+        UpdateTransaction tx(store);
+        auto result = tx.removeDocument(999); // несуществующий id
+        REQUIRE(result.has_error());
+        // tx уничтожается без commit — rollback не должен добавлять мусор
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
 }
