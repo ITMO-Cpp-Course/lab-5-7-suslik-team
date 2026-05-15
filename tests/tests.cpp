@@ -1,9 +1,9 @@
+#include "index_transaction/update_transaction.hpp"
 #include <catch2/catch_all.hpp>
 #include <in_memory_index/document.hpp>
 #include <in_memory_index/document_builder.hpp>
 #include <in_memory_index/inverted_index.hpp>
 #include <index_transaction/index_store.hpp>
-#include "index_transaction/update_transaction.hpp"
 #include <string>
 #include <vector>
 
