@@ -1,16 +1,23 @@
+#include "index_transaction/update_transaction.hpp"
 #include <catch2/catch_all.hpp>
 #include <in_memory_index/document.hpp>
 #include <in_memory_index/document_builder.hpp>
 #include <in_memory_index/inverted_index.hpp>
+#include <index_transaction/index_store.hpp>
 #include <string>
 #include <vector>
 
 using namespace in_memory_index;
 
 // Вспомогательная функция для проверки наличия ID в векторе
-static bool contains(const std::vector<DocId>& vec, DocId id)
+static bool contains(const std::vector<uint64_t>& vec, uint64_t id)
 {
     return std::find(vec.begin(), vec.end(), id) != vec.end();
+}
+// Вспомогательная функция: проверяет, есть ли в векторе документов документ с заданным id
+static bool contains_document_with_id(const std::vector<Document>& docs, uint64_t id)
+{
+    return std::find_if(docs.begin(), docs.end(), [id](const Document& doc) { return doc.id == id; }) != docs.end();
 }
 
 // ========== Тесты InvertedIndex ==========
@@ -110,17 +117,22 @@ TEST_CASE("InvertedIndex: remove non-existing document does nothing", "[index]")
     REQUIRE(idx.search("hello").size() == 1);
 }
 
-// Проверяет: добавление документа с существующим ID перезаписывает старый.
-TEST_CASE("InvertedIndex: addDocument with existing ID replaces document", "[index]")
+// Проверяет: добавление документа с уже существующим ID возвращает ошибку и не заменяет старый документ.
+TEST_CASE("InvertedIndex: addDocument with existing ID returns error and keeps original document", "[index]")
 {
     InvertedIndex idx;
-    idx.addDocument(1, "first", "hello world");
-    idx.addDocument(1, "second", "new words");
+    auto first = idx.addDocument(1, "first", "hello world");
+    REQUIRE(first.has_value());
     REQUIRE(idx.documentCount() == 1);
-    REQUIRE(idx.search("hello").empty());
-    auto result = idx.search("new");
+    REQUIRE(idx.search("hello").size() == 1);
+    auto second = idx.addDocument(1, "second", "new words");
+    REQUIRE(second.has_error());
+    REQUIRE(second.error() == "Document id 1 already exists");
+    REQUIRE(idx.documentCount() == 1);
+    auto result = idx.search("hello");
     REQUIRE(result.size() == 1);
     REQUIRE(result[0] == 1);
+    REQUIRE(idx.search("new").empty());
 }
 
 // Проверяет: documentCount возвращает актуальное количество документов.
@@ -430,4 +442,562 @@ TEST_CASE("DocumentBuilder: splitWords handles special characters", "[document_b
     REQUIRE(words[2] == "path");
     REQUIRE(words[3] == "to");
     REQUIRE(words[4] == "file");
+}
+
+#include "index_transaction/result.hpp"
+
+using namespace index_transaction;
+
+// Проверяет: успешное создание через ok() и получение значения.
+TEST_CASE("Result holds value via ok", "[result]")
+{
+    auto r = Result<int>::ok(42);
+    REQUIRE(r.has_value());
+    REQUIRE_FALSE(r.has_error());
+    REQUIRE(r.value() == 42);
+    REQUIRE(static_cast<bool>(r) == true);
+}
+
+// Проверяет: создание ошибки через err() и получение сообщения.
+TEST_CASE("Result holds error via err", "[result]")
+{
+    auto r = Result<int>::err("something wrong");
+    REQUIRE(r.has_error());
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error() == "something wrong");
+    REQUIRE(static_cast<bool>(r) == false);
+}
+
+// Проверяет: вызов value() на ошибочном результате выбрасывает исключение.
+TEST_CASE("Result value() throws on error", "[result]")
+{
+    auto r = Result<int>::err("error");
+    REQUIRE_THROWS_AS(r.value(), std::bad_expected_access<std::string>);
+}
+
+// Проверяет: перемещающий конструктор передаёт состояние, старый объект остаётся валидным.
+TEST_CASE("Result move constructor transfers state", "[result]")
+{
+    auto r1 = Result<int>::ok(42);
+    auto r2 = std::move(r1);
+    REQUIRE(r2.has_value());
+    REQUIRE(r2.value() == 42);
+}
+
+// Проверяет: копирующий конструктор создаёт независимую копию значения.
+TEST_CASE("Result copy constructor copies value", "[result]")
+{
+    auto r1 = Result<int>::ok(42);
+    auto r2 = r1;
+    REQUIRE(r2.has_value());
+    REQUIRE(r2.value() == 42);
+}
+
+// Проверяет: Result работает со строкой в качестве значения (особый случай, когда T = std::string).
+TEST_CASE("Result works with std::string as T", "[result]")
+{
+    auto r = Result<std::string>::ok("hello");
+    REQUIRE(r.has_value());
+    REQUIRE(r.value() == "hello");
+    auto e = Result<std::string>::err("error");
+    REQUIRE(e.error() == "error");
+}
+
+// Проверяет: оператор bool работает в условных контекстах.
+TEST_CASE("Result operator bool works in if", "[result]")
+{
+    auto r = Result<int>::ok(42);
+    if (r)
+    {
+        REQUIRE(r.value() == 42);
+    }
+    else
+    {
+        FAIL("Result should be true");
+    }
+}
+
+// Проверяет: перемещающая версия ok() использует перемещение, а не копирование.
+TEST_CASE("Result ok(T&&) moves value", "[result]")
+{
+    std::string s = "move me";
+    auto r = Result<std::string>::ok(std::move(s));
+    REQUIRE(r.has_value());
+    // После перемещения строка s может быть пустой, но мы не опираемся на неё.
+    // Достаточно, что значение в Result корректное.
+    REQUIRE(r.value() == "move me");
+}
+// ========== Тесты IndexStore ==========
+
+// Проверяет: addDocument добавляет документ успешно.
+TEST_CASE("IndexStore: addDocument adds document successfully", "[index_store]")
+{
+    IndexStore store;
+    auto doc = DocumentBuilder::buildDocument(1, "file.txt", "hello world");
+    auto result = store.addDocument(doc);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: addDocument с дубликатом id возвращает ошибку и не меняет состояние.
+TEST_CASE("IndexStore: addDocument with duplicate id returns error", "[index_store]")
+{
+    IndexStore store;
+    auto doc1 = DocumentBuilder::buildDocument(1, "first.txt", "content");
+    auto doc2 = DocumentBuilder::buildDocument(1, "second.txt", "other content");
+    REQUIRE(store.addDocument(doc1).has_value());
+    auto result = store.addDocument(doc2);
+    REQUIRE(result.has_error());
+    REQUIRE(result.error() == "Document id 1 already exists");
+    REQUIRE(store.documentCount() == 1); // состояние не изменилось
+}
+
+// Проверяет: removeDocument удаляет существующий документ из индекса.
+TEST_CASE("IndexStore: removeDocument removes existing document", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple banana"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "apple cherry"));
+    REQUIRE(store.documentCount() == 2);
+    auto result = store.removeDocument(1);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchResult = store.search("apple");
+    REQUIRE(searchResult.has_value());
+    REQUIRE(searchResult.value().size() == 1);
+    REQUIRE(contains_document_with_id(searchResult.value(), 2));
+}
+
+// Проверяет: removeDocument для несуществующего id возвращает ошибку.
+TEST_CASE("IndexStore: removeDocument for non-existing id returns error", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello"));
+    auto result = store.removeDocument(999);
+    REQUIRE(result.has_error());
+    REQUIRE(result.error() == "Document id 999 not found");
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: search возвращает все документы, содержащие искомое слово.
+TEST_CASE("IndexStore: search returns documents containing word", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "hello cpp"));
+    store.addDocument(DocumentBuilder::buildDocument(3, "doc3.txt", "world"));
+    auto result = store.search("hello");
+    REQUIRE(result.has_value());
+    const auto& docs = result.value();
+    REQUIRE(docs.size() == 2);
+    REQUIRE(contains_document_with_id(docs, 1));
+    REQUIRE(contains_document_with_id(docs, 2));
+    REQUIRE_FALSE(contains_document_with_id(docs, 3));
+}
+
+// Проверяет: search по несуществующему слову возвращает пустой вектор.
+TEST_CASE("IndexStore: search for non-existing word returns empty", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "apple banana"));
+    auto result = store.search("nonexistent");
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().empty());
+}
+
+// Проверяет: getWordOccurrences возвращает корректные частоты вхождения слова.
+TEST_CASE("IndexStore: getWordOccurrences returns correct frequencies", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "hello cpp"));
+    auto result = store.getWordOccurrences("hello");
+    REQUIRE(result.has_value());
+    const auto& freq = result.value();
+    REQUIRE(freq.size() == 2);
+    REQUIRE(freq.at(1) == 2);
+    REQUIRE(freq.at(2) == 1);
+}
+
+// Проверяет: getWordOccurrences для отсутствующего слова возвращает пустую map.
+TEST_CASE("IndexStore: getWordOccurrences for missing word returns empty", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    auto result = store.getWordOccurrences("missing");
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().empty());
+}
+
+// Проверяет: documentCount возвращает актуальное количество документов.
+TEST_CASE("IndexStore: documentCount returns correct number", "[index_store]")
+{
+    IndexStore store;
+    REQUIRE(store.documentCount() == 0);
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "a"));
+    REQUIRE(store.documentCount() == 1);
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "b"));
+    REQUIRE(store.documentCount() == 2);
+    store.removeDocument(1);
+    REQUIRE(store.documentCount() == 1);
+    store.clear();
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: clear полностью очищает индекс от всех документов и слов.
+TEST_CASE("IndexStore: clear removes all documents and words", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "hello world"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "foo bar"));
+    store.clear();
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+    auto occRes = store.getWordOccurrences("world");
+    REQUIRE(occRes.has_value());
+    REQUIRE(occRes.value().empty());
+}
+
+// Проверяет: несколько документов с одинаковым словом — все находятся.
+TEST_CASE("IndexStore: multiple documents with same word are all found", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "common"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "common common"));
+    store.addDocument(DocumentBuilder::buildDocument(3, "doc3.txt", "uncommon"));
+    auto result = store.search("common");
+    REQUIRE(result.has_value());
+    const auto& docs = result.value();
+    REQUIRE(docs.size() == 2);
+    REQUIRE(contains_document_with_id(docs, 1));
+    REQUIRE(contains_document_with_id(docs, 2));
+}
+
+// Проверяет: поиск регистронезависим благодаря нормализации DocumentBuilder.
+TEST_CASE("IndexStore: search is case insensitive via DocumentBuilder", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "Hello WORLD"));
+    auto result1 = store.search("hello");
+    REQUIRE(result1.has_value());
+    REQUIRE(result1.value().size() == 1);
+    auto result2 = store.search("HELLO");
+    REQUIRE(result2.has_value());
+    REQUIRE(result2.value().size() == 1);
+    auto result3 = store.search("world");
+    REQUIRE(result3.has_value());
+    REQUIRE(result3.value().size() == 1);
+}
+
+// Проверяет: после удаления документа он не появляется ни в поиске, ни в частотах.
+TEST_CASE("IndexStore: after removal, document does not appear in search or occurrences", "[index_store]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple apple"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "apple banana"));
+    store.removeDocument(1);
+    auto searchRes = store.search("apple");
+    REQUIRE(searchRes.has_value());
+    const auto& docs = searchRes.value();
+    REQUIRE(docs.size() == 1);
+    REQUIRE(docs[0].id == 2);
+    auto occRes = store.getWordOccurrences("apple");
+    REQUIRE(occRes.has_value());
+    const auto& freq = occRes.value();
+    REQUIRE(freq.size() == 1);
+    REQUIRE(freq.count(1) == 0);
+    REQUIRE(freq.at(2) == 1);
+}
+
+// Проверяет: перегрузка addDocument с id, name, text корректно работает.
+TEST_CASE("IndexStore: addDocument with id, name, text overload works", "[index_store]")
+{
+    IndexStore store;
+    auto result = store.addDocument(10, "doc10.txt", "test document");
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("test");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 10);
+    REQUIRE(searchRes.value()[0].name == "doc10.txt");
+}
+
+// ========== Тесты UpdateTransaction ==========
+
+// Проверяет: addDocument(Document) успешно добавляет документ в store.
+TEST_CASE("UpdateTransaction: addDocument with Document adds document to store", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    auto doc = DocumentBuilder::buildDocument(1, "file.txt", "hello world");
+    auto result = tx.addDocument(doc);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: addDocument(id, name, text) успешно добавляет документ через перегрузку.
+TEST_CASE("UpdateTransaction: addDocument with id, name, text overload adds document", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    auto result = tx.addDocument(42, "doc.txt", "hello world");
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("world");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 42);
+}
+
+// Проверяет: addDocument с дублирующимся id возвращает ошибку и не меняет состояние store.
+TEST_CASE("UpdateTransaction: addDocument with duplicate id returns error", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "existing.txt", "existing content"));
+    UpdateTransaction tx(store);
+    auto result = tx.addDocument(1, "duplicate.txt", "other content");
+    REQUIRE(result.has_error());
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("other");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: removeDocument успешно удаляет существующий документ из store.
+TEST_CASE("UpdateTransaction: removeDocument removes existing document", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    UpdateTransaction tx(store);
+    auto result = tx.removeDocument(1);
+    REQUIRE(result.has_value());
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: removeDocument для несуществующего id возвращает ошибку.
+TEST_CASE("UpdateTransaction: removeDocument for non-existing id returns error", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello"));
+    UpdateTransaction tx(store);
+    auto result = tx.removeDocument(999);
+    REQUIRE(result.has_error());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: commit фиксирует изменения — после commit деструктор не откатывает добавленные документы.
+TEST_CASE("UpdateTransaction: commit persists added documents after destruction", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "doc.txt", "hello world").has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+}
+
+// Проверяет: commit фиксирует изменения — после commit деструктор не откатывает удалённые документы.
+TEST_CASE("UpdateTransaction: commit persists removed documents after destruction", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: деструктор без commit откатывает добавленные документы.
+TEST_CASE("UpdateTransaction: destructor without commit rolls back added documents", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "doc.txt", "hello world").has_value());
+        REQUIRE(store.documentCount() == 1);
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 0);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().empty());
+}
+
+// Проверяет: деструктор без commit откатывает удалённые документы — документ возвращается в store.
+TEST_CASE("UpdateTransaction: destructor without commit rolls back removed documents", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello world"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());
+        REQUIRE(store.documentCount() == 0);
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: rollback нескольких операций выполняется в обратном порядке.
+TEST_CASE("UpdateTransaction: rollback of multiple operations happens in reverse order", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc1.txt", "apple"));
+    store.addDocument(DocumentBuilder::buildDocument(2, "doc2.txt", "banana"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.removeDocument(1).has_value());                    // шаг 1: удалить doc 1
+        REQUIRE(tx.removeDocument(2).has_value());                    // шаг 2: удалить doc 2
+        REQUIRE(tx.addDocument(3, "doc3.txt", "cherry").has_value()); // шаг 3: добавить doc 3
+        REQUIRE(store.documentCount() == 1);                          // только doc 3 в store
+        // tx уничтожается без commit — откат в обратном порядке: удалить 3, вернуть 2, вернуть 1
+    }
+    REQUIRE(store.documentCount() == 2);
+    REQUIRE_FALSE(contains_document_with_id(store.search("cherry").value(), 3));
+    REQUIRE(contains_document_with_id(store.search("apple").value(), 1));
+    REQUIRE(contains_document_with_id(store.search("banana").value(), 2));
+}
+
+// Проверяет: commit очищает лог rollback — повторный коммит возвращает успех и не меняет состояние.
+TEST_CASE("UpdateTransaction: commit clears rollback log and returns ok", "[update_transaction]")
+{
+    IndexStore store;
+    UpdateTransaction tx(store);
+    REQUIRE(tx.addDocument(1, "doc.txt", "hello").has_value());
+    auto commitResult = tx.commit();
+    REQUIRE(commitResult.has_value());
+    REQUIRE(store.documentCount() == 1);
+}
+
+// Проверяет: смешанные операции add и remove корректно откатываются при разрушении без commit.
+TEST_CASE("UpdateTransaction: mixed add and remove rollback correctly without commit", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(10, "old.txt", "old content"));
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(20, "new.txt", "new content").has_value());
+        REQUIRE(tx.removeDocument(10).has_value());
+        REQUIRE(store.documentCount() == 1); // только doc 20
+        // tx уничтожается без commit
+    }
+    REQUIRE(store.documentCount() == 1); // вернулся только doc 10
+    auto resOld = store.search("old");
+    REQUIRE(resOld.has_value());
+    REQUIRE(resOld.value().size() == 1);
+    REQUIRE(resOld.value()[0].id == 10);
+    auto resNew = store.search("new");
+    REQUIRE(resNew.has_value());
+    REQUIRE(resNew.value().empty());
+}
+
+// Проверяет: несколько addDocument внутри одной транзакции — все откатываются при разрушении без commit.
+TEST_CASE("UpdateTransaction: multiple addDocuments all rolled back without commit", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "a.txt", "alpha").has_value());
+        REQUIRE(tx.addDocument(2, "b.txt", "beta").has_value());
+        REQUIRE(tx.addDocument(3, "c.txt", "gamma").has_value());
+        REQUIRE(store.documentCount() == 3);
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: несколько addDocument внутри одной транзакции — все фиксируются после commit.
+TEST_CASE("UpdateTransaction: multiple addDocuments all committed", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.addDocument(1, "a.txt", "alpha").has_value());
+        REQUIRE(tx.addDocument(2, "b.txt", "beta").has_value());
+        REQUIRE(tx.addDocument(3, "c.txt", "gamma").has_value());
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 3);
+    REQUIRE(contains_document_with_id(store.search("alpha").value(), 1));
+    REQUIRE(contains_document_with_id(store.search("beta").value(), 2));
+    REQUIRE(contains_document_with_id(store.search("gamma").value(), 3));
+}
+
+// Проверяет: транзакция на пустом store без операций — commit и деструктор работают без ошибок.
+TEST_CASE("UpdateTransaction: empty transaction commit is a no-op", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        REQUIRE(tx.commit().has_value());
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: транзакция на пустом store без операций — деструктор без commit работает без ошибок.
+TEST_CASE("UpdateTransaction: empty transaction destructor without commit is a no-op", "[update_transaction]")
+{
+    IndexStore store;
+    {
+        UpdateTransaction tx(store);
+        // уничтожается без commit — не должно быть ошибок
+    }
+    REQUIRE(store.documentCount() == 0);
+}
+
+// Проверяет: ошибочный addDocument не попадает в лог rollback — откат не трогает store.
+TEST_CASE("UpdateTransaction: failed addDocument is not added to rollback log", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "original"));
+    {
+        UpdateTransaction tx(store);
+        auto result = tx.addDocument(1, "dup.txt", "duplicate"); // должен вернуть ошибку
+        REQUIRE(result.has_error());
+        // tx уничтожается без commit — rollback не должен пытаться удалить doc 1
+    }
+    // doc 1 должен остаться в store
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("original");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
+    REQUIRE(searchRes.value()[0].id == 1);
+}
+
+// Проверяет: ошибочный removeDocument не попадает в лог rollback — откат не трогает store.
+TEST_CASE("UpdateTransaction: failed removeDocument is not added to rollback log", "[update_transaction]")
+{
+    IndexStore store;
+    store.addDocument(DocumentBuilder::buildDocument(1, "doc.txt", "hello"));
+    {
+        UpdateTransaction tx(store);
+        auto result = tx.removeDocument(999); // несуществующий id
+        REQUIRE(result.has_error());
+        // tx уничтожается без commit — rollback не должен добавлять мусор
+    }
+    REQUIRE(store.documentCount() == 1);
+    auto searchRes = store.search("hello");
+    REQUIRE(searchRes.has_value());
+    REQUIRE(searchRes.value().size() == 1);
 }
