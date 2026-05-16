@@ -7,10 +7,11 @@ namespace in_memory_index
 
 using index_transaction::Result;
 using index_transaction::UpdateTransaction;
+using index_transaction::ErrorCode;
 
 Result<void> IndexStore::addDocument(const Document& doc)
 {
-    return index_.addDocument(doc);
+    return index_.addDocument(doc);  
 }
 
 Result<void> IndexStore::addDocument(std::uint64_t id, const std::string& name, const std::string& text)
@@ -36,18 +37,19 @@ Result<std::vector<Document>> IndexStore::search(const std::string& word) const
     for (std::uint64_t id : ids)
     {
         auto docRes = index_.getDocument(id);
-        if (!docRes.has_value())
+        if (!docRes)
         {
-            return Result<std::vector<Document>>::err("Document id " + std::to_string(id) + " not found in storage");
+            
+            return std::unexpected(ErrorCode::InternalError); 
         }
         docs.push_back(std::move(docRes.value()));
     }
-    return Result<std::vector<Document>>::ok(std::move(docs));
+    return Result<std::vector<Document>>(std::move(docs));
 }
 
 Result<std::unordered_map<std::uint64_t, int>> IndexStore::getWordOccurrences(const std::string& word) const
 {
-    return Result<std::unordered_map<std::uint64_t, int>>::ok(index_.getWordOccurrences(word));
+    return Result<std::unordered_map<std::uint64_t, int>>(index_.getWordOccurrences(word));
 }
 
 size_t IndexStore::documentCount() const noexcept
@@ -62,6 +64,7 @@ void IndexStore::clear() noexcept
 
 Result<UpdateTransaction> IndexStore::beginTransaction()
 {
-    return Result<UpdateTransaction>::ok(UpdateTransaction(*this));
+    return Result<UpdateTransaction>(UpdateTransaction(*this));
 }
+
 } // namespace in_memory_index

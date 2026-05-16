@@ -1,23 +1,26 @@
 #include "in_memory_index/inverted_index.hpp"
 #include "in_memory_index/document_builder.hpp"
+#include "index_transaction/result.hpp"   
 
 namespace in_memory_index
 {
 using index_transaction::Result;
+using index_transaction::ErrorCode;
+
 Result<void> InvertedIndex::addDocument(Document doc)
 {
     if (documents_.find(doc.id) != documents_.end())
     {
-        return Result<void>::err("Document id " + std::to_string(doc.id) + " already exists");
+        return std::unexpected(ErrorCode::DuplicateDocument);
     }
-    documents_[doc.id] = doc;
-    for (const auto& word : doc.text())
+    documents_[doc.id] = std::move(doc);
+    for (const auto& word : documents_[doc.id].text())
     {
         std::string norm = DocumentBuilder::normalizeWord(word);
         invertedIndex_[norm].insert(doc.id);
         occurrences_[norm][doc.id]++;
     }
-    return Result<void>::ok();
+    return {};
 }
 
 Result<void> InvertedIndex::addDocument(std::uint64_t id, const std::string& name, const std::string& text)
@@ -31,7 +34,7 @@ Result<void> InvertedIndex::removeDocument(std::uint64_t id)
     auto it = documents_.find(id);
     if (it == documents_.end())
     {
-        return Result<void>::err("Document id " + std::to_string(id) + " not found");
+        return std::unexpected(ErrorCode::DocumentNotFound);
     }
     for (const auto& word : it->second.text())
     {
@@ -52,7 +55,7 @@ Result<void> InvertedIndex::removeDocument(std::uint64_t id)
         }
     }
     documents_.erase(it);
-    return Result<void>::ok();
+    return {};
 }
 
 std::vector<std::uint64_t> InvertedIndex::search(const std::string& word) const
@@ -88,9 +91,9 @@ Result<Document> InvertedIndex::getDocument(std::uint64_t id) const
     auto it = documents_.find(id);
     if (it == documents_.end())
     {
-        return Result<Document>::err("Document not found");
+        return std::unexpected(ErrorCode::DocumentNotFound);
     }
-    return Result<Document>::ok(it->second);
+    return Result<Document>(it->second);
 }
 
 void InvertedIndex::clear() noexcept

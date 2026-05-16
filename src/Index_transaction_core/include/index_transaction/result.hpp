@@ -2,111 +2,40 @@
 
 #include <expected>
 #include <string>
-#include <utility>
 
-namespace index_transaction
-{
-template <typename T> class Result
-{
-  public:
-    static Result<T> ok(const T& value)
-    {
-        return Result(value);
-    }
-    static Result<T> ok(T&& value)
-    {
-        return Result(std::move(value));
-    }
-    static Result<T> err(const std::string& error)
-    {
-        return Result(std::unexpected(error));
-    }
-    static Result<T> err(std::string&& error)
-    {
-        return Result(std::unexpected(std::move(error)));
-    }
+namespace index_transaction {
 
-    bool has_value() const noexcept
-    {
-        return data_.has_value();
-    }
-    bool has_error() const noexcept
-    {
-        return !has_value();
-    }
-
-    T& value()
-    {
-        return data_.value();
-    }
-    const T& value() const
-    {
-        return data_.value();
-    }
-
-    std::string error() const
-    {
-        return data_.error();
-    }
-
-    explicit operator bool() const noexcept
-    {
-        return has_value();
-    }
-
-  private:
-    std::expected<T, std::string> data_;
-    Result(const T& value) : data_(value) {}
-    Result(T&& value) : data_(std::move(value)) {}
-    Result(std::unexpected<std::string> error) : data_(std::move(error)) {}
+enum class ErrorCode {
+    None = 0,
+    InvalidDocument,
+    DuplicateDocument,
+    DocumentNotFound,
+    InvalidWord,
+    InternalError,
 };
 
-template <> class Result<void>
-{
-  public:
-    static Result ok()
-    {
-        return Result();
+inline std::string errorCodeToString(ErrorCode code) {
+    switch (code) {
+        case ErrorCode::InvalidDocument: return "Invalid document";
+        case ErrorCode::DuplicateDocument: return "Document already exists";
+        case ErrorCode::DocumentNotFound: return "Document not found";
+        case ErrorCode::InvalidWord: return "Invalid word in document";
+        case ErrorCode::InternalError: return "Internal error";
+        default: return "Unknown error";
     }
+}
 
-    static Result err(const std::string& error)
-    {
-        return Result(std::unexpected(error));
-    }
-
-    static Result err(std::string&& error)
-    {
-        return Result(std::unexpected(std::move(error)));
-    }
-
-    bool has_value() const noexcept
-    {
-        return data_.has_value();
-    }
-
-    bool has_error() const noexcept
-    {
-        return !has_value();
-    }
-
-    void value() const
-    {
-        data_.value();
-    }
-
-    std::string error() const
-    {
-        return data_.error();
-    }
-
-    explicit operator bool() const noexcept
-    {
-        return has_value();
-    }
-
-  private:
-    std::expected<void, std::string> data_;
-    Result() = default;
-    Result(std::unexpected<std::string> error) : data_(std::move(error)) {}
+template<typename T>
+struct ResultImpl {
+    using type = std::expected<T, ErrorCode>;
 };
+
+template<>
+struct ResultImpl<void> {
+    using type = std::expected<void, ErrorCode>;
+};
+
+template<typename T>
+using Result = typename ResultImpl<T>::type;
+
 } // namespace index_transaction

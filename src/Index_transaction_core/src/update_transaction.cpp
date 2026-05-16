@@ -1,6 +1,7 @@
 #include "index_transaction/update_transaction.hpp"
 #include "in_memory_index/document_builder.hpp"
 #include "index_transaction/index_store.hpp"
+#include "index_transaction/result.hpp"  
 #include <algorithm>
 
 namespace index_transaction
@@ -19,7 +20,7 @@ UpdateTransaction::~UpdateTransaction()
 Result<void> UpdateTransaction::addDocument(const in_memory_index::Document& doc)
 {
     auto result = store_.addDocument(doc);
-    if (result.has_value())
+    if (result)   
     {
         rollbackLog_.push_back({RollbackOperation::Type::REMOVE, doc.id, doc, false});
     }
@@ -30,7 +31,7 @@ Result<void> UpdateTransaction::addDocument(std::uint64_t id, const std::string&
 {
     auto doc = in_memory_index::DocumentBuilder::buildDocument(id, name, text);
     auto result = store_.addDocument(doc);
-    if (result.has_value())
+    if (result)
     {
         rollbackLog_.push_back({RollbackOperation::Type::REMOVE, id, doc, false});
     }
@@ -40,14 +41,14 @@ Result<void> UpdateTransaction::addDocument(std::uint64_t id, const std::string&
 Result<void> UpdateTransaction::removeDocument(std::uint64_t id)
 {
     auto docResult = store_.getDocument(id);
-    if (!docResult.has_value())
+    if (!docResult)
     {
-        return Result<void>::err("Document " + std::to_string(id) + " not found in storage");
+        return std::unexpected(ErrorCode::DocumentNotFound);   
     }
     in_memory_index::Document savedDoc = docResult.value();
 
     auto result = store_.removeDocument(id);
-    if (result.has_value())
+    if (result)
     {
         rollbackLog_.push_back({RollbackOperation::Type::ADD, id, savedDoc, false});
     }
@@ -58,7 +59,7 @@ Result<void> UpdateTransaction::commit()
 {
     committed_ = true;
     rollbackLog_.clear();
-    return Result<void>::ok();
+    return {};
 }
 
 void UpdateTransaction::rollback()
