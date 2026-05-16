@@ -1,7 +1,7 @@
 #pragma once
 
-#include "index_transaction/result.hpp"
 #include "in_memory_index/document.hpp"
+#include "index_transaction/result.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
