@@ -13,4 +13,5 @@ target_include_directories(in_memory_index_core
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${CMAKE_SOURCE_DIR}/src/Index_transaction_core/include
 )

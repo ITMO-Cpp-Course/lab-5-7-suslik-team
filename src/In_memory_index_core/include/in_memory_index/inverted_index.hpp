@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Index_transaction_core/include/index_transaction/result.hpp"
+#include "index_transaction/result.hpp"
 #include "in_memory_index/document.hpp"
 #include <cstdint>
 #include <string>
