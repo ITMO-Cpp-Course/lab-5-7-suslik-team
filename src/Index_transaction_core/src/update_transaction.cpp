@@ -42,7 +42,7 @@ Result<void> UpdateTransaction::removeDocument(std::uint64_t id)
     auto docResult = store_.getDocument(id);
     if (!docResult.has_value())
     {
-        return Result<void>::err(docResult.error());
+        return Result<void>::err("Document " + std::to_string(id) + " not found in storage");
     }
     in_memory_index::Document savedDoc = docResult.value();
 
