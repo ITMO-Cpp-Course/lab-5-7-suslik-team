@@ -1,25 +1,27 @@
-#include <catch2/catch_all.hpp>
 #include <algorithm>
+#include <catch2/catch_all.hpp>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "in_memory_index/document.hpp"
 #include "in_memory_index/document_builder.hpp"
 #include "in_memory_index/inverted_index.hpp"
 #include "index_transaction/index_store.hpp"
-#include "index_transaction/update_transaction.hpp"
 #include "index_transaction/result.hpp"
+#include "index_transaction/update_transaction.hpp"
 
 using namespace in_memory_index;
 using namespace index_transaction;
 
 // Вспомогательные функции
-static bool contains(const std::vector<uint64_t>& vec, uint64_t id) {
+static bool contains(const std::vector<uint64_t>& vec, uint64_t id)
+{
     return std::find(vec.begin(), vec.end(), id) != vec.end();
 }
 
-static bool contains_document_with_id(const std::vector<Document>& docs, uint64_t id) {
+static bool contains_document_with_id(const std::vector<Document>& docs, uint64_t id)
+{
     return std::find_if(docs.begin(), docs.end(), [id](const Document& doc) { return doc.id == id; }) != docs.end();
 }
 
@@ -296,7 +298,7 @@ TEST_CASE("InvertedIndex: remove non-existing document returns error", "[index]"
     InvertedIndex idx;
     idx.addDocument(Document(1, "", {"hello"})).value();
     auto res = idx.removeDocument(999);
-    REQUIRE(!res.has_value());          
+    REQUIRE(!res.has_value());
     REQUIRE(res.error() == ErrorCode::DocumentNotFound);
     REQUIRE(idx.documentCount() == 1);
     REQUIRE(idx.search("hello").size() == 1);
@@ -309,7 +311,7 @@ TEST_CASE("InvertedIndex: addDocument with existing ID returns error and keeps o
     REQUIRE(first.has_value());
     REQUIRE(idx.documentCount() == 1);
     auto second = idx.addDocument(1, "second", "new words");
-    REQUIRE(!second.has_value());       
+    REQUIRE(!second.has_value());
     REQUIRE(second.error() == ErrorCode::DuplicateDocument);
     REQUIRE(idx.documentCount() == 1);
     REQUIRE(idx.search("hello").size() == 1);
@@ -400,7 +402,7 @@ TEST_CASE("Result holds value", "[result]")
 TEST_CASE("Result holds error", "[result]")
 {
     auto r = Result<int>(std::unexpected(ErrorCode::InvalidDocument));
-    REQUIRE(!r.has_value());      
+    REQUIRE(!r.has_value());
     REQUIRE(r.error() == ErrorCode::InvalidDocument);
     REQUIRE(static_cast<bool>(r) == false);
 }
@@ -440,9 +442,12 @@ TEST_CASE("Result works with std::string as T", "[result]")
 TEST_CASE("Result operator bool works in if", "[result]")
 {
     auto r = Result<int>(42);
-    if (r) {
+    if (r)
+    {
         REQUIRE(r.value() == 42);
-    } else {
+    }
+    else
+    {
         FAIL("Result should be true");
     }
 }
@@ -775,7 +780,7 @@ TEST_CASE("UpdateTransaction: rollback of multiple operations happens in reverse
         REQUIRE(tx.removeDocument(1).has_value());
         REQUIRE(tx.removeDocument(2).has_value());
         REQUIRE(tx.addDocument(3, "doc3.txt", "cherry").has_value());
-        REQUIRE(store.documentCount() == 1); 
+        REQUIRE(store.documentCount() == 1);
     }
     REQUIRE(store.documentCount() == 2);
     auto searchApple = store.search("apple");
@@ -806,9 +811,9 @@ TEST_CASE("UpdateTransaction: mixed add and remove rollback correctly", "[update
         UpdateTransaction tx(store);
         REQUIRE(tx.addDocument(20, "new.txt", "new content").has_value());
         REQUIRE(tx.removeDocument(10).has_value());
-        REQUIRE(store.documentCount() == 1); 
+        REQUIRE(store.documentCount() == 1);
     }
-    REQUIRE(store.documentCount() == 1); 
+    REQUIRE(store.documentCount() == 1);
     auto oldRes = store.search("old");
     REQUIRE(oldRes.has_value());
     REQUIRE(oldRes.value().size() == 1);

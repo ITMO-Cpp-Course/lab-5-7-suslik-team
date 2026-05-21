@@ -1,7 +1,7 @@
 #include "index_transaction/update_transaction.hpp"
 #include "in_memory_index/document_builder.hpp"
 #include "index_transaction/index_store.hpp"
-#include "index_transaction/result.hpp"  
+#include "index_transaction/result.hpp"
 #include <algorithm>
 
 namespace index_transaction
@@ -20,7 +20,7 @@ UpdateTransaction::~UpdateTransaction()
 Result<void> UpdateTransaction::addDocument(const in_memory_index::Document& doc)
 {
     auto result = store_.addDocument(doc);
-    if (result)   
+    if (result)
     {
         rollbackLog_.push_back({RollbackOperation::Type::REMOVE, doc.id, doc, false});
     }
@@ -43,7 +43,7 @@ Result<void> UpdateTransaction::removeDocument(std::uint64_t id)
     auto docResult = store_.getDocument(id);
     if (!docResult)
     {
-        return std::unexpected(ErrorCode::DocumentNotFound);   
+        return std::unexpected(ErrorCode::DocumentNotFound);
     }
     in_memory_index::Document savedDoc = docResult.value();
 

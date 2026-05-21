@@ -13,18 +13,18 @@ add_executable(index_tests
 
 target_include_directories(index_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/In_memory_index_core/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src/Index_transaction_core/include   
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/Index_transaction_core/include
 )
 
-target_link_libraries(index_tests PRIVATE 
-        in_memory_index_core 
-        index_transaction_core       
-        project_warnings 
+target_link_libraries(index_tests PRIVATE
+        in_memory_index_core
+        index_transaction_core
+        project_warnings
         Catch2::Catch2WithMain
 )
 
 if (TARGET project_sanitizers)
-        target_link_libraries(index_tests PRIVATE project_sanitizers)
+    target_link_libraries(index_tests PRIVATE project_sanitizers)
 endif ()
 
 add_test(NAME index_tests COMMAND index_tests)
