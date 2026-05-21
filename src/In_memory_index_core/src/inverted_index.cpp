@@ -1,11 +1,11 @@
 #include "in_memory_index/inverted_index.hpp"
 #include "in_memory_index/document_builder.hpp"
-#include "index_transaction/result.hpp"   
+#include "index_transaction/result.hpp"
 
 namespace in_memory_index
 {
-using index_transaction::Result;
 using index_transaction::ErrorCode;
+using index_transaction::Result;
 
 Result<void> InvertedIndex::addDocument(Document doc)
 {
@@ -76,7 +76,7 @@ std::unordered_map<std::uint64_t, int> InvertedIndex::getWordOccurrences(const s
     return it->second;
 }
 
-size_t InvertedIndex::documentCount() const
+size_t InvertedIndex::documentCount() const noexcept
 {
     return documents_.size();
 }

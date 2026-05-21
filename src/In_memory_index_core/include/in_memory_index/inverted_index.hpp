@@ -21,7 +21,7 @@ class InvertedIndex
     std::unordered_map<std::uint64_t, int> getWordOccurrences(const std::string& word) const;
     bool hasDocument(std::uint64_t id) const noexcept;
     index_transaction::Result<Document> getDocument(std::uint64_t id) const;
-    size_t documentCount() const;
+    size_t documentCount() const noexcept;
     void clear() noexcept;
 
   private:
