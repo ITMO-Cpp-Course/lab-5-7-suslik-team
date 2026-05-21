@@ -68,11 +68,11 @@ void UpdateTransaction::rollback()
     {
         if (it->type == RollbackOperation::Type::ADD)
         {
-            store_.addDocument(it->document);
+            (void)store_.addDocument(it->document);
         }
         else if (it->type == RollbackOperation::Type::REMOVE)
         {
-            store_.removeDocument(it->id);
+            (void)store_.removeDocument(it->id);
         }
     }
     rollbackLog_.clear();
