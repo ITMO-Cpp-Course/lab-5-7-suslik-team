@@ -2,6 +2,7 @@
 #include "in_memory_index/document_builder.hpp"
 #include "index_transaction/update_transaction.hpp"
 #include <expected>
+#include <memory>
 
 namespace in_memory_index
 {
@@ -61,9 +62,20 @@ void IndexStore::clear() noexcept
     index_.clear();
 }
 
-Result<UpdateTransaction> IndexStore::beginTransaction()
+index_transaction::Result<std::shared_ptr<index_transaction::UpdateTransaction>> IndexStore::beginTransaction()
 {
-    return UpdateTransaction(*this);
+    if (auto existing = currentTransaction_.lock())
+    {
+        auto commitRes = existing->commit();
+        if (!commitRes)
+        {
+            return std::unexpected(commitRes.error());
+        }
+        currentTransaction_.reset();
+    }
+    auto newTx = std::make_shared<index_transaction::UpdateTransaction>(*this);
+    currentTransaction_ = newTx;
+    return newTx;
 }
 
 } // namespace in_memory_index

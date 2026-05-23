@@ -2,7 +2,9 @@
 
 #include "in_memory_index/inverted_index.hpp"
 #include "index_transaction/result.hpp"
+#include "index_transaction/update_transaction.hpp"
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -28,10 +30,11 @@ class IndexStore
 
     size_t documentCount() const noexcept;
     void clear() noexcept;
-    index_transaction::Result<index_transaction::UpdateTransaction> beginTransaction();
+    index_transaction::Result<std::shared_ptr<index_transaction::UpdateTransaction>> beginTransaction();
 
   private:
     InvertedIndex index_;
+    std::weak_ptr<index_transaction::UpdateTransaction> currentTransaction_;
 };
 
 } // namespace in_memory_index
