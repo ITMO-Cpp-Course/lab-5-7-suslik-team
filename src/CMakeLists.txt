@@ -1,1 +1,5 @@
-# TODO: Your code
+add_subdirectory(In_memory_index_core)
+add_subdirectory(Index_transaction_core)
+
+add_library(index_core INTERFACE)
+target_link_libraries(index_core INTERFACE in_memory_index_core index_transaction_core)
